@@ -1,8 +1,10 @@
+from __future__ import annotations
 import json
 import argparse
 from collections import Counter
 from pathlib import Path
 import networkx as nx
+
 
 
 def load_json(path: Path):

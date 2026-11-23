@@ -1,0 +1,23 @@
+[
+  {
+    "id": "pair_001",
+    "description": "Cayley-Hamilton direct citation vs. expanded characteristic polynomial steps",
+    "proof_a": "theorem t1 := by exact Matrix.aeval_self_charpoly M",
+    "proof_b": "theorem t1 := by\n  have h1 := Matrix.charpoly_natDegree_eq_dim M\n  have h2 := Matrix.aeval_self_charpoly M\n  exact h2",
+    "label": 1
+  },
+  {
+    "id": "pair_002",
+    "description": "Sperner theorem direct vs. LYM inequality expansion",
+    "proof_a": "theorem t2 := by exact IsAntichain.sperner hA",
+    "proof_b": "theorem t2 := by\n  have h_lym := IsAntichain.sum_card_slice_div_choose_le_one hA\n  exact Nat.choose_le_middle",
+    "label": 1
+  },
+  {
+    "id": "pair_003",
+    "description": "Unrelated theorems (negative pair)",
+    "proof_a": "theorem t3 := by exact Matrix.aeval_self_charpoly M",
+    "proof_b": "theorem t3 := by exact IsAntichain.sperner hA",
+    "label": 0
+  }
+]
