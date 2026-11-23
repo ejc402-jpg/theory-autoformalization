@@ -1,10 +1,10 @@
 from __future__ import annotations
+
 import json
 import argparse
 from collections import Counter
 from pathlib import Path
 import networkx as nx
-
 
 
 def load_json(path: Path):
@@ -57,7 +57,13 @@ def build_merged_graph(graph_path: Path, node_source_path: Path | None = None):
         edge_data = {
             "source": src,
             "target": tgt,
-            "type": e.get("type", e.get("relation", "unknown")),
+            "type": (
+                e.get("edge_type")
+                or e.get("type")
+                or e.get("relationship")
+                or e.get("relation")
+                or "unknown"
+            ),
             "confidence": float(e.get("confidence", 1.0)),
             "reasoning": e.get("reasoning", ""),
             "is_inverse": bool(e.get("is_inverse", e.get("inverse", False))),

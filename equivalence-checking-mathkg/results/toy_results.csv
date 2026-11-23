@@ -1,4 +1,4 @@
 id,label,nodes_a,nodes_b,avg_coverage,raw_score,hop1_score,hop2_score,contraction_score,llm_pred
-pair_001,1,1,2,1.0,0.5,0.5,0.5,0.5,
-pair_002,1,1,2,0.833,0.0,0.0,0.0,0.0,
-pair_003,0,1,1,1.0,0.0,0.0,0.0,0.0,
+pair_001,1,1,2,1.0,0.5,0.81,0.909,0.5,
+pair_002,1,1,2,0.833,0.0,0.228,0.51,0.5,
+pair_003,0,1,1,1.0,0.0,0.0,0.03,0.0,

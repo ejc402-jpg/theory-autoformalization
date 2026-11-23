@@ -10,21 +10,23 @@
     #sidebar { width: 340px; padding: 16px; background: #1e293b; overflow-y: auto; border-right: 1px solid #334155; }
     #cy { flex: 1; height: 100vh; background: #0f172a; }
     h2 { margin: 0 0 12px; font-size: 18px; color: #38bdf8; }
-    h3 { margin: 16px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
+    h3 { margin: 14px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
     input[type="file"], input[type="text"], select {
       width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #475569;
       background: #0f172a; color: #e2e8f0; margin-bottom: 8px;
     }
     .checkbox-group { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: 13px; }
-    .checkbox-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .checkbox-group label, .toggle-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
     button {
       width: 100%; padding: 8px; border: none; border-radius: 6px; background: #0284c7;
       color: white; font-weight: 600; cursor: pointer; margin-top: 8px;
     }
     button:hover { background: #0369a1; }
-    #stats { font-size: 12px; color: #94a3b8; margin-top: 8px; }
+    button.secondary { background: #334155; margin-top: 6px; }
+    button.secondary:hover { background: #475569; }
+    #stats { font-size: 12px; color: #94a3b8; margin-top: 6px; }
     #inspector {
-      margin-top: 14px; padding: 12px; background: #0f172a; border-radius: 8px;
+      margin-top: 12px; padding: 12px; background: #0f172a; border-radius: 8px;
       border: 1px solid #334155; font-size: 13px; line-height: 1.45;
     }
     code { background: #1e293b; padding: 2px 5px; border-radius: 4px; color: #7dd3fc; word-break: break-all; }
@@ -34,7 +36,7 @@
   <div id="sidebar">
     <h2>MathKG Explorer</h2>
     <input type="file" id="fileInput" accept=".json" />
-    <div id="stats">Load <code>mathkg_merged.json</code> or the raw graph JSON.</div>
+    <div id="stats">Load <code>mathkg_merged.json</code>. Click any node to isolate its neighborhood.</div>
 
     <h3>Search Node</h3>
     <input type="text" id="searchBox" placeholder="Type theorem or Lean name..." />
@@ -45,13 +47,18 @@
     <h3>Edge Types</h3>
     <div id="edgeChecks" class="checkbox-group"></div>
 
-    <h3>Min Confidence: <span id="confVal">0.80</span></h3>
-    <input type="range" id="confSlider" min="0" max="1" step="0.05" value="0.80" style="width:100%" />
+    <h3>Min Confidence: <span id="confVal">0.90</span></h3>
+    <input type="range" id="confSlider" min="0.75" max="1" step="0.01" value="0.90" style="width:100%" />
+
+    <label class="toggle-label" style="margin-top:8px;">
+      <input type="checkbox" id="showLabels" /> Show all node labels
+    </label>
 
     <button id="applyBtn">Apply Filters & Relayout</button>
+    <button id="resetFocusBtn" class="secondary">Reset Highlight / Fit View</button>
 
     <h3>Inspector (Click Node or Edge)</h3>
-    <div id="inspector">Select any node or edge in the graph to view its statement, Mathlib name, or edge reasoning.</div>
+    <div id="inspector">Click any node to isolate its 1-hop connections, or click an arrow to read its reasoning.</div>
   </div>
   <div id="cy"></div>
 
@@ -61,7 +68,7 @@
       "Abstract Algebra": "#fb7185", "Linear Algebra": "#34d399", "Analysis": "#f97316",
       "Euclidean Geometry": "#2dd4bf"
     };
-    const DEFAULT_CHECKED = new Set(["prerequisite", "applied-in", "generalizes", "specializes", "instance-of", "equivalent-to"]);
+    const DEFAULT_CHECKED = new Set(["applied-in", "generalizes", "specializes", "equivalent-to"]);
 
     let rawData = null;
     let cy = cytoscape({
@@ -70,24 +77,50 @@
         {
           selector: "node",
           style: {
-            "background-color": "data(color)", "label": "data(name)", "color": "#e2e8f0",
-            "font-size": "9px", "text-valign": "top", "text-margin-y": "-4px",
-            "width": "18px", "height": "18px"
+            "background-color": "data(color)", "label": "", "color": "#f8fafc",
+            "font-size": "10px", "text-valign": "top", "text-margin-y": "-5px",
+            "text-background-color": "#0f172a", "text-background-opacity": 0.75,
+            "text-background-padding": "2px", "width": "16px", "height": "16px"
           }
+        },
+        {
+          selector: "node.labeled, node.focused, node:selected",
+          style: { "label": "data(name)" }
         },
         {
           selector: "edge",
           style: {
-            "width": 1.2, "line-color": "#475569", "target-arrow-color": "#64748b",
-            "target-arrow-shape": "triangle", "curve-style": "bezier", "opacity": 0.65
+            "width": 1, "line-color": "#64748b", "target-arrow-color": "#64748b",
+            "target-arrow-shape": "triangle", "arrow-scale": 0.7,
+            "curve-style": "bezier", "opacity": 0.18
           }
         },
-        { selector: ":selected", style: { "border-width": 3, "border-color": "#facc15", "line-color": "#facc15", "target-arrow-color": "#facc15", "opacity": 1 } }
+        { selector: ".dimmed", style: { "opacity": 0.06 } },
+        {
+          selector: "node.focused",
+          style: { "border-width": 2.5, "border-color": "#facc15", "opacity": 1, "z-index": 20 }
+        },
+        {
+          selector: "edge.focused",
+          style: {
+            "width": 2, "line-color": "#38bdf8", "target-arrow-color": "#38bdf8",
+            "opacity": 0.95, "z-index": 15
+          }
+        },
+        {
+          selector: "edge:selected",
+          style: { "width": 3, "line-color": "#facc15", "target-arrow-color": "#facc15", "opacity": 1 }
+        }
       ]
     });
 
     document.getElementById("confSlider").addEventListener("input", (e) => {
       document.getElementById("confVal").textContent = Number(e.target.value).toFixed(2);
+    });
+
+    document.getElementById("showLabels").addEventListener("change", (e) => {
+      if (e.target.checked) cy.nodes().addClass("labeled");
+      else cy.nodes().removeClass("labeled");
     });
 
     document.getElementById("fileInput").addEventListener("change", (e) => {
@@ -106,9 +139,10 @@
       const domains = [...new Set(rawData.nodes.map(n => n.domain || "Unknown"))].sort();
       const sel = document.getElementById("domainSelect");
       sel.innerHTML = '<option value="ALL">All Domains</option>' + domains.map(d => `<option value="${d}">${d}</option>`).join("");
+      if (domains.includes("Number Theory")) sel.value = "Number Theory";
 
       const edges = rawData.edges || rawData.links || [];
-      const types = [...new Set(edges.map(e => e.type || e.relation || "unknown"))].sort();
+      const types = [...new Set(edges.map(e => e.type || e.edge_type || "unknown"))].sort();
       const box = document.getElementById("edgeChecks");
       box.innerHTML = types.map(t => `
         <label><input type="checkbox" value="${t}" ${DEFAULT_CHECKED.has(t) ? "checked" : ""}/> ${t}</label>
@@ -125,7 +159,7 @@
       const nodeIds = new Set(filteredNodes.map(n => n.id));
       const edges = (rawData.edges || rawData.links || []).filter(e => {
         const s = e.source || e.from, t = e.target || e.to;
-        const et = e.type || e.relation || "unknown";
+        const et = e.type || e.edge_type || "unknown";
         const conf = e.confidence !== undefined ? Number(e.confidence) : 1.0;
         return nodeIds.has(s) && nodeIds.has(t) && allowedTypes.has(et) && conf >= minConf;
       });
@@ -135,40 +169,55 @@
         ...edges.map((e, i) => ({
           data: {
             id: `e_${i}`, source: e.source || e.from, target: e.target || e.to,
-            type: e.type || e.relation, confidence: e.confidence ?? 1.0, reasoning: e.reasoning || ""
+            type: e.type || e.edge_type, confidence: e.confidence ?? 1.0, reasoning: e.reasoning || ""
           }
         }))
       ];
 
       cy.elements().remove();
       cy.add(elements);
-      cy.layout({ name: "cose", animate: false, nodeRepulsion: 8000 }).run();
+      if (document.getElementById("showLabels").checked) cy.nodes().addClass("labeled");
+      cy.layout({ name: "cose", animate: false, nodeRepulsion: 25000, idealEdgeLength: 110 }).run();
       document.getElementById("stats").textContent = `Showing ${filteredNodes.length} nodes and ${edges.length} edges.`;
     }
 
+    function resetFocus() {
+      cy.elements().removeClass("dimmed focused");
+      cy.fit(undefined, 40);
+    }
+
     document.getElementById("applyBtn").addEventListener("click", renderGraph);
+    document.getElementById("resetFocusBtn").addEventListener("click", resetFocus);
 
     document.getElementById("searchBox").addEventListener("input", (e) => {
       const q = e.target.value.trim().toLowerCase();
-      cy.nodes().unselect();
-      if (!q) return;
+      if (!q) { resetFocus(); return; }
       const matches = cy.nodes().filter(n => {
         const name = (n.data("name") || "").toLowerCase();
         const lean = (n.data("lean4_mathlib_name") || "").toLowerCase();
         return name.includes(q) || lean.includes(q);
       });
-      matches.select();
-      if (matches.length > 0) cy.animate({ fit: { eles: matches, padding: 80 }, duration: 300 });
+      if (matches.length > 0) {
+        const hood = matches.closedNeighborhood();
+        cy.elements().addClass("dimmed").removeClass("focused");
+        hood.removeClass("dimmed").addClass("focused");
+        cy.animate({ fit: { eles: hood, padding: 60 }, duration: 250 });
+      }
     });
 
     cy.on("tap", "node", (evt) => {
-      const d = evt.target.data();
+      const node = evt.target;
+      const hood = node.closedNeighborhood();
+      cy.elements().addClass("dimmed").removeClass("focused");
+      hood.removeClass("dimmed").addClass("focused");
+
+      const d = node.data();
       document.getElementById("inspector").innerHTML = `
         <strong>${d.name}</strong> (${d.type || "node"})<br/>
         <b>ID:</b> <code>${d.id}</code><br/>
         <b>Domain:</b> ${d.domain || "N/A"}<br/>
         <b>Mathlib:</b> <code>${d.lean4_mathlib_name || "N/A"}</code><br/>
-        <b>Import:</b> <code>${d.lean4_mathlib_import || "N/A"}</code><br/>
+        <b>Connections shown:</b> ${node.connectedEdges().length}<br/>
         <b>Statement:</b> ${d.statement || "N/A"}
       `;
     });
@@ -181,6 +230,10 @@
         <b>Confidence:</b> ${d.confidence}<br/>
         <b>Reasoning:</b> ${d.reasoning || "N/A"}
       `;
+    });
+
+    cy.on("tap", (evt) => {
+      if (evt.target === cy) resetFocus();
     });
   </script>
 </body>
