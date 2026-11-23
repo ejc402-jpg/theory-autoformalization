@@ -16,7 +16,8 @@
       background: #0f172a; color: #e2e8f0; margin-bottom: 8px;
     }
     .checkbox-group { display: grid; grid-template-columns: 1fr; gap: 4px; font-size: 13px; }
-    .checkbox-group label, .toggle-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; }
+    .checkbox-group label, .toggle-label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; margin-top: 6px; }
+    .legend { font-size: 12px; color: #cbd5e1; margin-top: 8px; padding: 6px 8px; background: #0f172a; border-radius: 6px; border: 1px solid #334155; }
     button {
       width: 100%; padding: 8px; border: none; border-radius: 6px; background: #0284c7;
       color: white; font-weight: 600; cursor: pointer; margin-top: 8px;
@@ -36,7 +37,8 @@
   <div id="sidebar">
     <h2>MathKG Explorer</h2>
     <input type="file" id="fileInput" accept=".json" />
-    <div id="stats">Load <code>mathkg_merged.json</code>. Click any node to isolate its neighborhood.</div>
+    <div id="stats">Load <code>mathkg_merged.json</code>. Hover to preview, click to isolate.</div>
+    <div class="legend">● Theorem &nbsp;|&nbsp; ◆ Definition &nbsp;|&nbsp; Size = # connections</div>
 
     <h3>Search Node</h3>
     <input type="text" id="searchBox" placeholder="Type theorem or Lean name..." />
@@ -44,21 +46,31 @@
     <h3>Domain Filter</h3>
     <select id="domainSelect"><option value="ALL">All Domains</option></select>
 
+    <h3>Layout (Deterministic)</h3>
+    <select id="layoutSelect">
+      <option value="breadthfirst">Hierarchical DAG (Breadthfirst)</option>
+      <option value="cose" selected>Force-Directed (Stable Cose)</option>
+      <option value="concentric">Concentric (Hubs in Center)</option>
+    </select>
+
     <h3>Edge Types</h3>
     <div id="edgeChecks" class="checkbox-group"></div>
 
-    <h3>Min Confidence: <span id="confVal">0.90</span></h3>
-    <input type="range" id="confSlider" min="0.75" max="1" step="0.01" value="0.90" style="width:100%" />
+    <h3>Min Confidence: <span id="confVal">0.85</span></h3>
+    <input type="range" id="confSlider" min="0.75" max="1" step="0.01" value="0.85" style="width:100%" />
 
-    <label class="toggle-label" style="margin-top:8px;">
-      <input type="checkbox" id="showLabels" /> Show all node labels
+    <label class="toggle-label">
+      <input type="checkbox" id="hideIsolated" checked /> Hide disconnected nodes
+    </label>
+    <label class="toggle-label">
+      <input type="checkbox" id="showLabels" checked /> Show all node labels
     </label>
 
     <button id="applyBtn">Apply Filters & Relayout</button>
     <button id="resetFocusBtn" class="secondary">Reset Highlight / Fit View</button>
 
     <h3>Inspector (Click Node or Edge)</h3>
-    <div id="inspector">Click any node to isolate its 1-hop connections, or click an arrow to read its reasoning.</div>
+    <div id="inspector">Hover any node to see its name. Click a node to isolate its 1-hop neighborhood, or click an arrow to read its reasoning.</div>
   </div>
   <div id="cy"></div>
 
@@ -68,7 +80,7 @@
       "Abstract Algebra": "#fb7185", "Linear Algebra": "#34d399", "Analysis": "#f97316",
       "Euclidean Geometry": "#2dd4bf"
     };
-    const DEFAULT_CHECKED = new Set(["applied-in", "generalizes", "specializes", "equivalent-to"]);
+    const DEFAULT_CHECKED = new Set(["prerequisite", "applied-in", "generalizes", "specializes", "equivalent-to"]);
 
     let rawData = null;
     let cy = cytoscape({
@@ -78,32 +90,39 @@
           selector: "node",
           style: {
             "background-color": "data(color)", "label": "", "color": "#f8fafc",
-            "font-size": "10px", "text-valign": "top", "text-margin-y": "-5px",
-            "text-background-color": "#0f172a", "text-background-opacity": 0.75,
-            "text-background-padding": "2px", "width": "16px", "height": "16px"
+            "font-size": "10px", "text-valign": "top", "text-margin-y": "-6px",
+            "text-background-color": "#0f172a", "text-background-opacity": 0.85,
+            "text-background-padding": "2px",
+            "text-wrap": "wrap", "text-max-width": "110px",
+            "width": "mapData(deg, 0, 15, 14, 34)",
+            "height": "mapData(deg, 0, 15, 14, 34)"
           }
         },
         {
-          selector: "node.labeled, node.focused, node:selected",
-          style: { "label": "data(name)" }
+          selector: 'node[type = "definition"]',
+          style: { "shape": "diamond", "border-width": 1.5, "border-color": "#f8fafc" }
+        },
+        {
+          selector: "node.labeled, node.focused, node.hovered, node:selected",
+          style: { "label": "data(name)", "z-index": 30 }
         },
         {
           selector: "edge",
           style: {
-            "width": 1, "line-color": "#64748b", "target-arrow-color": "#64748b",
-            "target-arrow-shape": "triangle", "arrow-scale": 0.7,
-            "curve-style": "bezier", "opacity": 0.18
+            "width": 1.2, "line-color": "#64748b", "target-arrow-color": "#64748b",
+            "target-arrow-shape": "triangle", "arrow-scale": 0.75,
+            "curve-style": "bezier", "opacity": 0.35
           }
         },
         { selector: ".dimmed", style: { "opacity": 0.06 } },
         {
-          selector: "node.focused",
-          style: { "border-width": 2.5, "border-color": "#facc15", "opacity": 1, "z-index": 20 }
+          selector: "node.focused, node.hovered",
+          style: { "border-width": 2.5, "border-color": "#facc15", "opacity": 1, "z-index": 25 }
         },
         {
           selector: "edge.focused",
           style: {
-            "width": 2, "line-color": "#38bdf8", "target-arrow-color": "#38bdf8",
+            "width": 2.2, "line-color": "#38bdf8", "target-arrow-color": "#38bdf8",
             "opacity": 0.95, "z-index": 15
           }
         },
@@ -153,10 +172,16 @@
       if (!rawData) return;
       const domain = document.getElementById("domainSelect").value;
       const minConf = parseFloat(document.getElementById("confSlider").value);
+      const hideIsolated = document.getElementById("hideIsolated").checked;
+      const layoutMode = document.getElementById("layoutSelect").value;
       const allowedTypes = new Set([...document.querySelectorAll("#edgeChecks input:checked")].map(c => c.value));
 
-      const filteredNodes = rawData.nodes.filter(n => domain === "ALL" || n.domain === domain);
+      // Sort nodes deterministically by ID so layout is always reproducible
+      let filteredNodes = rawData.nodes
+        .filter(n => domain === "ALL" || n.domain === domain)
+        .sort((a, b) => (a.id || "").localeCompare(b.id || ""));
       const nodeIds = new Set(filteredNodes.map(n => n.id));
+
       const edges = (rawData.edges || rawData.links || []).filter(e => {
         const s = e.source || e.from, t = e.target || e.to;
         const et = e.type || e.edge_type || "unknown";
@@ -164,8 +189,28 @@
         return nodeIds.has(s) && nodeIds.has(t) && allowedTypes.has(et) && conf >= minConf;
       });
 
+      const degMap = {};
+      edges.forEach(e => {
+        const s = e.source || e.from, t = e.target || e.to;
+        degMap[s] = (degMap[s] || 0) + 1;
+        degMap[t] = (degMap[t] || 0) + 1;
+      });
+
+      if (hideIsolated) {
+        filteredNodes = filteredNodes.filter(n => (degMap[n.id] || 0) > 0);
+      }
+
+      // Deterministic initial circle positions so 'cose' with randomize:false is 100% stable
+      const total = Math.max(filteredNodes.length, 1);
+      const radius = Math.max(250, total * 12);
       const elements = [
-        ...filteredNodes.map(n => ({ data: { ...n, color: DOMAIN_COLORS[n.domain] || "#94a3b8" } })),
+        ...filteredNodes.map((n, idx) => {
+          const angle = (2 * Math.PI * idx) / total;
+          return {
+            data: { ...n, color: DOMAIN_COLORS[n.domain] || "#94a3b8", deg: degMap[n.id] || 0 },
+            position: { x: radius * Math.cos(angle), y: radius * Math.sin(angle) }
+          };
+        }),
         ...edges.map((e, i) => ({
           data: {
             id: `e_${i}`, source: e.source || e.from, target: e.target || e.to,
@@ -177,7 +222,23 @@
       cy.elements().remove();
       cy.add(elements);
       if (document.getElementById("showLabels").checked) cy.nodes().addClass("labeled");
-      cy.layout({ name: "cose", animate: false, nodeRepulsion: 25000, idealEdgeLength: 110 }).run();
+
+      let layoutConfig;
+      if (layoutMode === "breadthfirst") {
+        layoutConfig = { name: "breadthfirst", directed: true, spacingFactor: 1.5, avoidOverlap: true, padding: 40 };
+      } else if (layoutMode === "concentric") {
+        layoutConfig = {
+          name: "concentric", avoidOverlap: true, minNodeSpacing: 65, padding: 40,
+          concentric: (node) => node.data("deg") || 0, levelWidth: () => 2
+        };
+      } else {
+        layoutConfig = {
+          name: "cose", animate: false, randomize: false,
+          nodeRepulsion: 45000, idealEdgeLength: 140, nodeOverlap: 30, padding: 40
+        };
+      }
+
+      cy.layout(layoutConfig).run();
       document.getElementById("stats").textContent = `Showing ${filteredNodes.length} nodes and ${edges.length} edges.`;
     }
 
@@ -188,6 +249,9 @@
 
     document.getElementById("applyBtn").addEventListener("click", renderGraph);
     document.getElementById("resetFocusBtn").addEventListener("click", resetFocus);
+
+    cy.on("mouseover", "node", (evt) => evt.target.addClass("hovered"));
+    cy.on("mouseout", "node", (evt) => evt.target.removeClass("hovered"));
 
     document.getElementById("searchBox").addEventListener("input", (e) => {
       const q = e.target.value.trim().toLowerCase();
